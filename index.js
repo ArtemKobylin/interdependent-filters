@@ -109,6 +109,7 @@ class FilterManager {
         let filterOptions = [];
         const optionsCount = {}
         targets.forEach((target) => {
+            if (target[key] === undefined || target[key] === null) return
             if (optionsCount[target[key]]) {
                 optionsCount[target[key]]++
             } else {
