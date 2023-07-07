@@ -85,24 +85,135 @@ class UserGenerator {
     }
 }
 const userGenerator = new UserGenerator();
-const initUsers = userGenerator.generateUsers(50);
+const initUsers = userGenerator.generateUsers(500);
 
-class FilterManager {
-    constructor(keys) {
-        this.keys = keys
-        this.filterState = this.initFilterState()
-        this.filters = this.getEmptyFilters(keys)
+class Filter {
+    constructor(queryFilter, selectingFilter) {
+        this.queryFilter = queryFilter
+        this.selectingFilter = selectingFilter
+        this.keys = []
+        this.filterState = null
+
+        if (!this.queryFilter && !this.selectingFilter) {
+            window.console.log('Neither query nor selecting filter is set! Define at least one filter!')
+            return
+        }
+
+        this.initKeys()
+        this.initFilterState()
     }
 
-    getEmptyFilters(keys) {
-        const filters = [];
-        keys.forEach((key) => {
-            filters.push({
+    initFilterState() {
+        this.filterState = this.keys.map(key => {
+            return {
                 name: key,
-                options: []
-            })
+                value: key === 'query' ? '' : 0
+            }
+        });
+    }
+
+    updateFilterState(newFilter) {
+        this.filterState = this.filterState.map(filter => {
+            if (filter.name === newFilter.name) {
+                if (!isNaN(newFilter.value) && newFilter.value !== '') {
+                    filter.value = parseInt(newFilter.value)
+                } else {
+                    filter.value = newFilter.value
+                }
+            }
+            return filter
         })
-        return filters
+    }
+
+    resetFilterState() {
+        this.initFilterState()
+    }
+
+    initKeys() {
+        this.keys = []
+        if (this.queryFilter) {
+            this.keys.push(this.queryFilter.filterKey)
+        }
+        if (this.selectingFilter && this.selectingFilter.keys.length) {
+            this.selectingFilter.keys.forEach(key => {
+                this.keys.push(key)
+            })
+        }
+    }
+
+    filterTargets(targets) {
+        return targets.filter((target) => {
+            let match = true
+            this.filterState.forEach(filter => {
+                if (filter.name === 'query') {
+                    if (filter.value === '') return
+                    match &= target[this.queryFilter.targetKey].includes(filter.value)
+                } else {
+                    if (filter.value === 0) return
+                    match &= target[filter.name] === filter.value
+                }
+            })
+            return match
+        })
+    }
+}
+class QueryFilter {
+    constructor(targetKey) {
+        this.filterKey = 'query'
+        this.query = ''
+        this.targetKey = targetKey
+    }
+
+    filterTargets(targets) {
+        return targets.filter((target) => target[this.targetKey].includes(this.query))
+    }
+}
+const queryFilter = new QueryFilter('name')
+class SelectingFilter {
+    constructor(keys) {
+        this.keys = []
+        this.initKey(keys)
+        // this.filterState = null
+        // this.initFilterState()
+    }
+
+    initKey(key) {
+        if (Array.isArray(key)) {
+            const keys = [...key]
+            keys.forEach((key) => {
+                this.keys.push(key)
+            })
+        } else if (key) {
+            this.keys.push(key)
+        } else {
+            window.console.log('Invalid filter key provided!', key)
+        }
+    }
+
+    initFilterState() {
+        this.filterState = this.keys.map(key => {
+            return {
+                name: key,
+                value: 0
+            }
+        });
+    }
+
+    updateFilterState(newFilter) {
+        this.filterState = this.filterState.map(filter => {
+            if (filter.name === newFilter.name) {
+                if (!isNaN(newFilter.value)) {
+                    filter.value = parseInt(newFilter.value)
+                } else {
+                    filter.value = newFilter.value
+                }
+            }
+            return filter
+        })
+    }
+
+    resetFilterState() {
+        this.initFilterState()
     }
 
     getFilterOptionsFromTargetsByKey(key, targets) {
@@ -134,13 +245,24 @@ class FilterManager {
         })
     }
 
+    getEmptyFilters(keys) {
+        const filters = [];
+        keys.forEach((key) => {
+            filters.push({
+                name: key,
+                options: []
+            })
+        })
+        return filters
+    }
+
     getFiltersFromTargets(targets) {
-        this.filters.forEach((filter) => {
+        const filters = this.getEmptyFilters(this.keys)
+
+        filters.forEach((filter) => {
             filter.options = this.getFilterOptionsFromTargetsByKey(filter.name, targets)
         })
-
-        const filtersJSON = JSON.stringify(this.filters);
-        return JSON.parse(filtersJSON);
+        return filters
     }
 
     filterTargets(targets) {
@@ -153,41 +275,10 @@ class FilterManager {
             return match
         })
     }
-
-    initFilterState() {
-        return this.keys.map(key => {
-            return {
-                name: key,
-                value: 0
-            }
-        });
-    }
-
-    updateFilterState(newFilter) {
-        this.filterState = this.filterState.map(filter => {
-            if (filter.name === newFilter.name) {
-                if (!isNaN(newFilter.value)) {
-                    filter.value = parseInt(newFilter.value)
-                } else {
-                    filter.value = newFilter.value
-                }
-            }
-            return filter
-        })
-    }
-
-    resetFilterState() {
-        this.keys.forEach((key) => {
-            const filter = {
-                name: key,
-                value: 0
-            }
-            this.updateFilterState(filter)
-        })
-    }
 }
-const filterManager = new FilterManager(['country', 'city', 'region'])
-const initFilters = filterManager.getFiltersFromTargets(initUsers);
+const selectingFilter = new SelectingFilter(['country', 'city', 'region'])
+const filterManager = new Filter(queryFilter, selectingFilter)
+const initFilters = filterManager.selectingFilter.getFiltersFromTargets(initUsers)
 
 class HTMLBuilder {
     body = document.body
@@ -210,7 +301,19 @@ const container = html.createElem('div')
 container.classList.add('container')
 html.body.appendChild(container)
 
-const buildFilterSelectors = (showCount = false) => {
+const buildQueryFilter = () => {
+    const input = html.createElem('input')
+    container.appendChild(input)
+    return input
+}
+const resetSearchBar = () => {
+    searchBar.value = ''
+}
+const searchBar = buildQueryFilter()
+const buildResetButtonForQueryFilter = () => {}
+buildResetButtonForQueryFilter()
+
+const buildSelectingFilters = (showCount = false) => {
     const selectors = []
     initFilters.forEach((filter) => {
         const selector = html.createElem('select')
@@ -232,7 +335,7 @@ const buildFilterSelectors = (showCount = false) => {
     })
     return selectors
 }
-const updateSelectors = (activeFilters, triggeredFilter) => {
+const updateSelectingFilters = (activeFilters, triggeredFilter) => {
     selectors.forEach((selector) => {
         const options = [...selector.children];
         if (!triggeredFilter) {
@@ -251,7 +354,7 @@ const updateSelectors = (activeFilters, triggeredFilter) => {
         })
     })
 }
-const selectors = buildFilterSelectors()
+const selectors = buildSelectingFilters()
 
 const buildResetButton = () => {
     const button = html.createElem('button')
@@ -259,9 +362,10 @@ const buildResetButton = () => {
     button.addEventListener('click', () => {
         filterManager.resetFilterState()
         const users = filterManager.filterTargets(initUsers)
-        const filters = filterManager.getFiltersFromTargets(users);
+        const filters = filterManager.selectingFilter.getFiltersFromTargets(users);
 
-        updateSelectors(filters, null)
+        updateSelectingFilters(filters, null)
+        resetSearchBar()
         removeTable()
         buildTable(users)
     })
@@ -301,6 +405,24 @@ const buildTable = (data) => {
 }
 buildTable(initUsers)
 
+
+const addEventListenerToSearchBar = (searchBar) => {
+    searchBar.addEventListener('input', (event) => {
+        const filter = {
+            name: 'query',
+            value: event.target.value
+        };
+        filterManager.updateFilterState(filter)
+        const users = filterManager.filterTargets(initUsers)
+        const filters = filterManager.selectingFilter.getFiltersFromTargets(users)
+
+        updateSelectingFilters(filters, filter)
+        removeTable()
+        buildTable(users)
+    })
+}
+addEventListenerToSearchBar(searchBar)
+
 const addEventListenerToSelector = (selector) => {
     selector.addEventListener('change', (event) => {
         const filter = {
@@ -309,9 +431,9 @@ const addEventListenerToSelector = (selector) => {
         };
         filterManager.updateFilterState(filter)
         const users = filterManager.filterTargets(initUsers)
-        const filters = filterManager.getFiltersFromTargets(users);
+        const filters = filterManager.selectingFilter.getFiltersFromTargets(users)
 
-        updateSelectors(filters, filter)
+        updateSelectingFilters(filters, filter)
         removeTable()
         buildTable(users)
     })
